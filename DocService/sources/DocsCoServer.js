@@ -103,6 +103,8 @@ const wopiClient = require('./wopiClient');
 const queueService = require('./../../Common/sources/taskqueueRabbitMQ');
 const operationContext = require('./../../Common/sources/operationContext');
 const tenantManager = require('./../../Common/sources/tenantManager');
+const runtimeProfile = require('./../../Common/sources/runtime/profile');
+const memoryGuard = require('./../../Common/sources/runtime/memoryGuard');
 const {notificationTypes, ...notificationService} = require('../../Common/sources/notificationService');
 const aiProxyHandler = require('./ai/aiProxyHandler');
 
@@ -629,6 +631,44 @@ function modifyConnectionEditorToView(ctx, conn) {
   }
   delete conn.coEditingMode;
 }
+function applyCommunityMemoryAdmission(ctx, conn, isLiveViewer) {
+  if (!runtimeProfile.isMemoryRuntime() || !conn.user || conn.user.view || isLiveViewer) {
+    return;
+  }
+
+  const tenEditorForGuard = getEditorConfig(ctx);
+  const heapStats = memoryGuard.getHeapStatsSafe();
+  const isNewEditableDoc = !memoryGuard.hasOpenEditableDoc(connections, conn.docId, conn);
+  const openEditableDocs = memoryGuard.countOpenEditableDocs(connections, conn);
+
+  const verdict = memoryGuard.checkAdmission({
+    heapStats,
+    maxChangesSizeBytes: tenEditorForGuard.maxChangesSize,
+    isMemoryRuntime: true,
+    isView: false,
+    isLiveViewer: false,
+    openEditableDocs,
+    isNewEditableDoc
+  });
+
+  if (verdict.allowed) {
+    return;
+  }
+
+  ctx.logger.warn(
+    'auth: forced view mode by community memory guard; reason = %s; docs = %d/%d; docBudgetMB = %s; heapMB = %d/%d',
+    verdict.reason,
+    openEditableDocs,
+    verdict.effectiveDocLimit,
+    (verdict.documentBudgetBytes / 1048576).toFixed(2),
+    Math.round((heapStats.used_heap_size || 0) / 1048576),
+    Math.round((heapStats.heap_size_limit || 0) / 1048576)
+  );
+
+  conn.licenseType = constants.LICENSE_RESULT.ConnectionsOS;
+  modifyConnectionEditorToView(ctx, conn);
+}
+
 function getParticipants(docId, excludeClosed, excludeUserId, excludeViewer) {
   return _.filter(connections, el => {
     return el.docId === docId && el.isCloseCoAuthoring !== excludeClosed && el.user.id !== excludeUserId && el.user.view !== excludeViewer;
@@ -2993,6 +3033,8 @@ exports.install = function (server, app, callbackFunction) {
       const c_LR = constants.LICENSE_RESULT;
       conn.licenseType = c_LR.Success;
       const isLiveViewer = utils.isLiveViewer(conn);
+      applyCommunityMemoryAdmission(ctx, conn, isLiveViewer);
+
       if (!conn.user.view || isLiveViewer) {
         let licenseType = yield* _checkLicenseAuth(ctx, licenseInfo, conn.user.idOriginal, isLiveViewer);
         let aggregationCtx, licenseInfoAggregation;
