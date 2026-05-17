@@ -656,11 +656,12 @@ function applyCommunityMemoryAdmission(ctx, conn, isLiveViewer) {
   }
 
   ctx.logger.warn(
-    'auth: forced view mode by community memory guard; reason = %s; docs = %d/%d; docBudgetMB = %s; heapMB = %d/%d',
+    'auth: forced view mode by community memory guard; reason = %s; docs = %d/%d; docBudgetMB = %s = max(maxChangesSize=%dMB/4, 20MB); heapMB = %d/%d',
     verdict.reason,
     openEditableDocs,
     verdict.effectiveDocLimit,
     (verdict.documentBudgetBytes / 1048576).toFixed(2),
+    Math.round((tenEditorForGuard.maxChangesSize || 0) / 1048576),
     Math.round((heapStats.used_heap_size || 0) / 1048576),
     Math.round((heapStats.heap_size_limit || 0) / 1048576)
   );

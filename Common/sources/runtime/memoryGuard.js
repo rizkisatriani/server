@@ -63,7 +63,7 @@ const profile = require('./profile');
 const DIVISOR = 4;
 const MIN_DOCUMENT_BUDGET_BYTES = 20 * 1024 * 1024;
 const BASE_RESERVE_BYTES = 256 * 1024 * 1024;
-const HEAP_CAPACITY_RATIO = 0.85;
+const HEAP_CAPACITY_RATIO = 1.0;
 const HEAP_PRESSURE_RATIO = 0.9;
 
 /**

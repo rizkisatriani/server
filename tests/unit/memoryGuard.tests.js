@@ -285,7 +285,7 @@ describe('memoryGuard — no public config surface', () => {
     expect(memoryGuard._internals.DIVISOR).toBe(4);
     expect(memoryGuard._internals.MIN_DOCUMENT_BUDGET_BYTES).toBe(20 * MB);
     expect(memoryGuard._internals.BASE_RESERVE_BYTES).toBe(256 * MB);
-    expect(memoryGuard._internals.HEAP_CAPACITY_RATIO).toBeCloseTo(0.85);
+    expect(memoryGuard._internals.HEAP_CAPACITY_RATIO).toBeCloseTo(1.0);
     expect(memoryGuard._internals.HEAP_PRESSURE_RATIO).toBeCloseTo(0.9);
   });
 });
