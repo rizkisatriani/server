@@ -1,33 +1,36 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2024
+ * Copyright (C) Ascensio System SIA, 2009-2026
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
- * version 3 as published by the Free Software Foundation. In accordance with
- * Section 7(a) of the GNU AGPL its Section 15 shall be amended to the effect
- * that Ascensio System SIA expressly excludes the warranty of non-infringement
- * of any third-party rights.
+ * version 3 as published by the Free Software Foundation, together with the
+ * additional terms provided in the LICENSE file.
  *
  * This program is distributed WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR  PURPOSE. For
- * details, see the GNU AGPL at: http://www.gnu.org/licenses/agpl-3.0.html
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. For
+ * details, see the GNU AGPL at: https://www.gnu.org/licenses/agpl-3.0.html
  *
- * You can contact Ascensio System SIA at 20A-6 Ernesta Birznieka-Upish
- * street, Riga, Latvia, EU, LV-1050.
+ * You can contact Ascensio System SIA by email at info@onlyoffice.com
+ * or by postal mail at 20A-6 Ernesta Birznieka-Upisha Street, Riga,
+ * LV-1050, Latvia, European Union.
  *
- * The  interactive user interfaces in modified source and object code versions
- * of the Program must display Appropriate Legal Notices, as required under
+ * The interactive user interfaces in modified versions of the Program
+ * are required to display Appropriate Legal Notices in accordance with
  * Section 5 of the GNU AGPL version 3.
  *
- * Pursuant to Section 7(b) of the License you must retain the original Product
- * logo when distributing the program. Pursuant to Section 7(e) we decline to
- * grant you any rights under trademark law for use of our trademarks.
+ * No trademark rights are granted under this License.
  *
- * All the Product's GUI elements, including illustrations and icon sets, as
- * well as technical writing content are licensed under the terms of the
- * Creative Commons Attribution-ShareAlike 4.0 International. See the License
- * terms at http://creativecommons.org/licenses/by-sa/4.0/legalcode
+ * All non-code elements of the Product, including illustrations,
+ * icon sets, and technical writing content, are licensed under the
+ * Creative Commons Attribution-ShareAlike 4.0 International License:
+ * https://creativecommons.org/licenses/by-sa/4.0/legalcode
  *
+ * This license applies only to such non-code elements and does not
+ * modify or replace the licensing terms applicable to the Program's
+ * source code, which remains licensed under the GNU Affero General
+ * Public License v3.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 'use strict';
@@ -101,6 +104,8 @@ function handleCorsHeaders(req, res, ctx, handleOptions = true) {
   return false; // Not an OPTIONS request or origin not allowed
 }
 
+const safeUrlOrigin = url => (URL.canParse(url) ? new URL(url).origin : null);
+
 /**
  * Detects provider type and generates appropriate authentication headers based on URL patterns
  *
@@ -163,8 +168,8 @@ async function proxyRequest(req, res) {
     let userName = '';
     let userCustomerId = '';
     const checkJwtRes = await docsCoServer.checkJwtHeader(ctx, req, 'Authorization', 'Bearer ', commonDefines.c_oAscSecretType.Session);
-    if (!checkJwtRes || checkJwtRes.err) {
-      ctx.logger.error('proxyRequest: checkJwtHeader error: %s', checkJwtRes?.err);
+    if (!checkJwtRes || !checkJwtRes.decoded) {
+      ctx.logger.error('proxyRequest: checkJwtHeader error: %s', checkJwtRes?.description);
       res.status(403).json({
         error: {
           message: 'proxyRequest: checkJwtHeader error',
@@ -198,14 +203,14 @@ async function proxyRequest(req, res) {
 
     const providerHeaders = {};
     let providerMatched = false;
-    // Determine which API key to use based on the target URL
-    if (uri) {
-      for (const providerName in tenAiApi.providers) {
-        const tenProvider = tenAiApi.providers[providerName];
-        if (uri.startsWith(tenProvider.url)) {
+    // Determine which API key to use based on the target URL.
+    // Compare origins first to prevent userinfo-SSRF (e.g. https://api.x.com@evil.com)
+    // and subdomain-bypass (e.g. https://api.x.com.evil.com) that startsWith alone would miss.
+    const targetOrigin = uri ? safeUrlOrigin(uri) : null;
+    if (targetOrigin) {
+      for (const tenProvider of Object.values(tenAiApi.providers)) {
+        if (safeUrlOrigin(tenProvider.url) === targetOrigin && uri.startsWith(tenProvider.url)) {
           providerMatched = true;
-
-          // Generate appropriate headers based on provider type
           uri = insertKeyToProvider(ctx, tenProvider.url, tenProvider.key, uri, providerHeaders);
           break;
         }
@@ -224,7 +229,7 @@ async function proxyRequest(req, res) {
       return;
     }
 
-    // Merge key in headers
+    // Merge key in headers; providerHeaders (spread last) always wins - axios normalises header names case-insensitively.
     const headers = {...body.headers, ...providerHeaders};
 
     // Preserve Accept-Encoding from original request if not explicitly provided
@@ -304,20 +309,27 @@ async function proxyRequest(req, res) {
     await pipeline(result.stream, res);
     success = true;
   } catch (error) {
-    ctx.logger.error(`proxyRequest: AI API request error: %s`, error);
-    if (error.response) {
-      // Set the response headers to match the target response
-      res.set(error.response.headers);
-
-      // Use pipeline to pipe the response data to the client
-      await pipeline(error.response.data, res);
+    if (error.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+      ctx.logger.debug('proxyRequest: client disconnected: %s', error.stack);
     } else {
-      res.status(500).json({
-        error: {
-          message: 'proxyRequest: AI API request error',
-          code: '500'
+      ctx.logger.error(`proxyRequest: AI API request error: %s`, error);
+    }
+    if (!res.headersSent) {
+      try {
+        if (error.response) {
+          res.set(error.response.headers);
+          await pipeline(error.response.data, res);
+        } else {
+          res.status(500).json({
+            error: {
+              message: 'proxyRequest: AI API request error',
+              code: '500'
+            }
+          });
         }
-      });
+      } catch (responseError) {
+        ctx.logger.debug('proxyRequest: error sending error response: %s', responseError.stack);
+      }
     }
   } finally {
     // Record the time taken for the proxyRequest in StatsD (skip cors requests and errors)
@@ -336,7 +348,7 @@ async function proxyRequest(req, res) {
  */
 async function getPluginSettings(ctx) {
   return {
-    version: 3,
+    version: ctx.getCfg('aiSettings.version', cfgAiSettings.version),
     actions: ctx.getCfg('aiSettings.actions', cfgAiSettings.actions),
     providers: ctx.getCfg('aiSettings.providers', cfgAiSettings.providers),
     customProviders: ctx.getCfg('aiSettings.customProviders', cfgAiSettings.customProviders),

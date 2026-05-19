@@ -1,33 +1,36 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2024
+ * Copyright (C) Ascensio System SIA, 2009-2026
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
- * version 3 as published by the Free Software Foundation. In accordance with
- * Section 7(a) of the GNU AGPL its Section 15 shall be amended to the effect
- * that Ascensio System SIA expressly excludes the warranty of non-infringement
- * of any third-party rights.
+ * version 3 as published by the Free Software Foundation, together with the
+ * additional terms provided in the LICENSE file.
  *
  * This program is distributed WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR  PURPOSE. For
- * details, see the GNU AGPL at: http://www.gnu.org/licenses/agpl-3.0.html
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. For
+ * details, see the GNU AGPL at: https://www.gnu.org/licenses/agpl-3.0.html
  *
- * You can contact Ascensio System SIA at 20A-6 Ernesta Birznieka-Upish
- * street, Riga, Latvia, EU, LV-1050.
+ * You can contact Ascensio System SIA by email at info@onlyoffice.com
+ * or by postal mail at 20A-6 Ernesta Birznieka-Upisha Street, Riga,
+ * LV-1050, Latvia, European Union.
  *
- * The  interactive user interfaces in modified source and object code versions
- * of the Program must display Appropriate Legal Notices, as required under
+ * The interactive user interfaces in modified versions of the Program
+ * are required to display Appropriate Legal Notices in accordance with
  * Section 5 of the GNU AGPL version 3.
  *
- * Pursuant to Section 7(b) of the License you must retain the original Product
- * logo when distributing the program. Pursuant to Section 7(e) we decline to
- * grant you any rights under trademark law for use of our trademarks.
+ * No trademark rights are granted under this License.
  *
- * All the Product's GUI elements, including illustrations and icon sets, as
- * well as technical writing content are licensed under the terms of the
- * Creative Commons Attribution-ShareAlike 4.0 International. See the License
- * terms at http://creativecommons.org/licenses/by-sa/4.0/legalcode
+ * All non-code elements of the Product, including illustrations,
+ * icon sets, and technical writing content, are licensed under the
+ * Creative Commons Attribution-ShareAlike 4.0 International License:
+ * https://creativecommons.org/licenses/by-sa/4.0/legalcode
  *
+ * This license applies only to such non-code elements and does not
+ * modify or replace the licensing terms applicable to the Program's
+ * source code, which remains licensed under the GNU Affero General
+ * Public License v3.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 'use strict';
@@ -48,6 +51,7 @@ const utils = require('./../../Common/sources/utils');
 const constants = require('./../../Common/sources/constants');
 const commonDefines = require('./../../Common/sources/commondefines');
 const wopiUtils = require('./wopiUtils');
+const newFileTemplateUtils = require('./newFileTemplateUtils');
 const documentFormats = require('./../../Common/sources/documentFormats');
 const operationContext = require('./../../Common/sources/operationContext');
 const tenantManager = require('./../../Common/sources/tenantManager');
@@ -243,8 +247,17 @@ function discovery(req, res) {
             xmlApp.ele('action', {name: 'edit', ext: ext.edit[j], default: 'true', requires: 'locks,update', urlsrc: urlTemplateEdit}).up();
           }
           xmlApp.ele('action', {name: 'mobileEdit', ext: ext.edit[j], requires: 'locks,update', urlsrc: urlTemplateMobileEdit}).up();
-          if (templatesFolderExtsCache[ext.edit[j]]) {
-            xmlApp.ele('action', {name: 'editnew', ext: ext.edit[j], requires: 'locks,update', urlsrc: urlTemplateEdit}).up();
+          const editNewTemplateExt = newFileTemplateUtils.getNewFileTemplateExt(ext.edit[j]);
+          if (templatesFolderExtsCache[editNewTemplateExt]) {
+            xmlApp
+              .ele('action', {
+                name: 'editnew',
+                ext: ext.edit[j],
+                requires: 'locks,update',
+                newext: newFileTemplateUtils.getNewFileCreatedExt(ext.edit[j]),
+                urlsrc: urlTemplateEdit
+              })
+              .up();
           }
         }
         xmlApp.up();
@@ -299,8 +312,17 @@ function discovery(req, res) {
                 xmlApp.ele('action', {name: 'edit', ext: '', default: 'true', requires: 'locks,update', urlsrc: urlTemplateEdit}).up();
               }
               xmlApp.ele('action', {name: 'mobileEdit', ext: '', requires: 'locks,update', urlsrc: urlTemplateMobileEdit}).up();
-              if (templatesFolderExtsCache[ext.edit[j]]) {
-                xmlApp.ele('action', {name: 'editnew', ext: '', requires: 'locks,update', urlsrc: urlTemplateEdit}).up();
+              const editNewTemplateExt = newFileTemplateUtils.getNewFileTemplateExt(ext.edit[j]);
+              if (templatesFolderExtsCache[editNewTemplateExt]) {
+                xmlApp
+                  .ele('action', {
+                    name: 'editnew',
+                    ext: '',
+                    requires: 'locks,update',
+                    newext: newFileTemplateUtils.getNewFileCreatedExt(ext.edit[j]),
+                    urlsrc: urlTemplateEdit
+                  })
+                  .up();
               }
               xmlApp.up();
             });
@@ -542,14 +564,26 @@ async function checkAndReplaceEmptyFile(ctx, fileInfo, wopiSrc, access_token, ac
       locale = constants.TEMPLATES_DEFAULT_LOCALE;
     }
 
-    const filePath = `${tenNewFileTemplate}/${locale}/new.${fileType}`;
+    const templateFileType = newFileTemplateUtils.getNewFileTemplateExt(fileType);
+    const filePath = `${tenNewFileTemplate}/${locale}/new.${templateFileType}`;
     if (!templateFilesSizeCache[filePath]) {
       templateFilesSizeCache[filePath] = await lstat(filePath);
     }
 
     const templateFileInfo = templateFilesSizeCache[filePath];
     const templateFileStream = createReadStream(filePath);
-    const postRes = await putFile(ctx, wopiParams, undefined, templateFileStream, templateFileInfo.size, fileInfo.UserId, false, false, false);
+    const postRes = await putFile(
+      ctx,
+      wopiParams,
+      undefined,
+      templateFileStream,
+      templateFileInfo.size,
+      fileInfo.UserId,
+      false,
+      false,
+      false,
+      templateFileType
+    );
     if (postRes) {
       //update Size
       fileInfo.Size = templateFileInfo.size;
@@ -814,7 +848,7 @@ function getConverterHtml(req, res) {
     }
   });
 }
-function putFile(ctx, wopiParams, data, dataStream, dataSize, userLastChangeId, isModifiedByUser, isAutosave, isExitSave) {
+function putFile(ctx, wopiParams, data, dataStream, dataSize, userLastChangeId, isModifiedByUser, isAutosave, isExitSave, optContentTypeExt) {
   return co(function* () {
     let postRes = null;
     try {
@@ -846,7 +880,7 @@ function putFile(ctx, wopiParams, data, dataStream, dataSize, userLastChangeId, 
           //collabora nexcloud connector
           headers['X-LOOL-WOPI-Timestamp'] = wopiParams.LastModifiedTime;
         }
-        headers['Content-Type'] = mime.getType(getFileTypeByInfo(fileInfo));
+        headers['Content-Type'] = mime.getType(optContentTypeExt || getFileTypeByInfo(fileInfo));
 
         ctx.logger.debug('wopi PutFile request uri=%s headers=%j', uri, headers);
         //isInJwtToken is true because it passed checkIpFilter for wopi

@@ -1,33 +1,36 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2024
+ * Copyright (C) Ascensio System SIA, 2009-2026
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
- * version 3 as published by the Free Software Foundation. In accordance with
- * Section 7(a) of the GNU AGPL its Section 15 shall be amended to the effect
- * that Ascensio System SIA expressly excludes the warranty of non-infringement
- * of any third-party rights.
+ * version 3 as published by the Free Software Foundation, together with the
+ * additional terms provided in the LICENSE file.
  *
  * This program is distributed WITHOUT ANY WARRANTY; without even the implied
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR  PURPOSE. For
- * details, see the GNU AGPL at: http://www.gnu.org/licenses/agpl-3.0.html
+ * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. For
+ * details, see the GNU AGPL at: https://www.gnu.org/licenses/agpl-3.0.html
  *
- * You can contact Ascensio System SIA at 20A-6 Ernesta Birznieka-Upish
- * street, Riga, Latvia, EU, LV-1050.
+ * You can contact Ascensio System SIA by email at info@onlyoffice.com
+ * or by postal mail at 20A-6 Ernesta Birznieka-Upisha Street, Riga,
+ * LV-1050, Latvia, European Union.
  *
- * The  interactive user interfaces in modified source and object code versions
- * of the Program must display Appropriate Legal Notices, as required under
+ * The interactive user interfaces in modified versions of the Program
+ * are required to display Appropriate Legal Notices in accordance with
  * Section 5 of the GNU AGPL version 3.
  *
- * Pursuant to Section 7(b) of the License you must retain the original Product
- * logo when distributing the program. Pursuant to Section 7(e) we decline to
- * grant you any rights under trademark law for use of our trademarks.
+ * No trademark rights are granted under this License.
  *
- * All the Product's GUI elements, including illustrations and icon sets, as
- * well as technical writing content are licensed under the terms of the
- * Creative Commons Attribution-ShareAlike 4.0 International. See the License
- * terms at http://creativecommons.org/licenses/by-sa/4.0/legalcode
+ * All non-code elements of the Product, including illustrations,
+ * icon sets, and technical writing content, are licensed under the
+ * Creative Commons Attribution-ShareAlike 4.0 International License:
+ * https://creativecommons.org/licenses/by-sa/4.0/legalcode
  *
+ * This license applies only to such non-code elements and does not
+ * modify or replace the licensing terms applicable to the Program's
+ * source code, which remains licensed under the GNU Affero General
+ * Public License v3.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 'use strict';
@@ -48,17 +51,28 @@ const LOCALE_SUBDIR = path.join('apps', 'documenteditor', 'main', 'locale');
 let cachedLocales = null;
 
 /**
- * Returns list of supported UI locale codes from documenteditor locale JSON files.
- * Result is cached for the lifetime of the process (locale files only change on product upgrade).
+ * Returns UI locale codes from documenteditor locale files, normalized to canonical BCP 47
+ * via Intl.getCanonicalLocales. Cached for process lifetime.
+ * @param {object} ctx - Operation context for logging
  * @param {string} webAppsPath - Resolved path to web-apps root
- * @returns {Promise<string[]>} Sorted list of locale codes (e.g. ['de', 'en', 'ru'])
+ * @returns {Promise<string[]>} Sorted canonical locale tags (e.g. ['de', 'en', 'ru', 'zh-CN'])
  */
-async function getSupportedLocales(webAppsPath) {
+async function getSupportedLocales(ctx, webAppsPath) {
   if (cachedLocales) return cachedLocales;
   const localeDir = path.resolve(webAppsPath, LOCALE_SUBDIR);
   try {
     const entries = await fs.readdir(localeDir, {withFileTypes: true});
-    cachedLocales = entries.filter(e => e.isFile() && e.name.endsWith('.json')).map(e => path.basename(e.name, '.json'));
+    cachedLocales = entries
+      .filter(e => e.isFile() && e.name.endsWith('.json'))
+      .map(e => {
+        const tag = path.basename(e.name, '.json');
+        try {
+          return Intl.getCanonicalLocales(tag)[0];
+        } catch {
+          ctx.logger.warn('getSupportedLocales: invalid BCP 47 locale tag in filename: %s', tag);
+          return tag;
+        }
+      });
     cachedLocales.sort((a, b) => a.localeCompare(b));
     return cachedLocales;
   } catch {
@@ -89,7 +103,7 @@ router.get('/config', async (req, res) => {
     await ctx.initTenantCache();
 
     const webAppsPath = ctx.config?.services?.CoAuthoring?.server?.static_content?.['/web-apps']?.path;
-    const langs = webAppsPath ? await getSupportedLocales(webAppsPath) : [];
+    const langs = webAppsPath ? await getSupportedLocales(ctx, webAppsPath) : [];
 
     const clientConfig = {
       authorization: {
