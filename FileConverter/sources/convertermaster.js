@@ -44,8 +44,7 @@ const runtimeConfigManager = require('./../../Common/sources/runtimeConfigManage
 
 if (cluster.isMaster) {
   const runtimeProfile = require('./../../Common/sources/runtime/profile');
-  const isMemoryRuntime=false;
-  if (isMemoryRuntime) {
+  if (runtimeProfile.isMemoryRuntime()) {
     operationContext.global.logger.warn(
       'convertermaster: memory runtime detected - embedded converter runs inside DocService; no workers will be forked'
     );
