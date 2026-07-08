@@ -91,9 +91,9 @@ exports.LICENSE_RESULT = {
   NotBefore: 16
 };
 
-exports.LICENSE_CONNECTIONS = 20;
+exports.LICENSE_CONNECTIONS = 9999;
 exports.LICENSE_CONNECTIONS_OS = 0x7fffffff; // max signed 32-bit value
-exports.LICENSE_USERS = 3;
+exports.LICENSE_USERS = 9999;
 exports.LICENSE_EXPIRE_USERS_ONE_DAY = 24 * 60 * 60; // day in seconds
 
 exports.AVS_OFFICESTUDIO_FILE_UNKNOWN = 0x0000;
