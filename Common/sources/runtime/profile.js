@@ -53,9 +53,9 @@ let cached = null;
 function isMemoryRuntime() {
   if (cached !== null) return cached;
 
-  if (license.packageType === constants.PACKAGE_TYPE_OS) {
-    return (cached = true);
-  }
+  // if (license.packageType === constants.PACKAGE_TYPE_OS) {
+  //   return (cached = true);
+  // }
 
   const queueType = config.has('queue.type') ? config.get('queue.type') : '';
   const sqlType = config.has('services.CoAuthoring.sql.type') ? config.get('services.CoAuthoring.sql.type') : '';
