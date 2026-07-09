@@ -51,6 +51,7 @@ const license = require('../license');
 let cached = null;
 
 function isMemoryRuntime() {
+  return false;
   if (cached !== null) return cached;
 
   if (license.packageType === constants.PACKAGE_TYPE_OS) {
